@@ -156,6 +156,16 @@ static float initialYaw = 0.0;
 static float initialQuaternion[4] = {0.0, 0.0, 0.0, 0.0};
 
 static uint32_t tdoaCount;
+static float tdoa_x=0.0;
+static float tdoa_y=0.0;
+static float tdoa_z=0.0;
+static float tdoa_err=0.0;
+static int32_t tdoa_upd_cnt=0;
+
+static float direct_pos_x = 0.0;
+static float direct_pos_y = 0.0;
+static float direct_pos_z = 0.0;
+static int32_t direct_upd_cnt = 0;
 
 static OutlierFilterLhState_t sweepOutlierFilterState;
 
@@ -314,6 +324,10 @@ void kalmanCoreUpdateWithPosition(kalmanCoreData_t* this, positionMeasurement_t 
 {
   // a direct measurement of states x, y, and z
   // do a scalar update for each state, since this should be faster than updating all together
+  direct_pos_x = xyz->pos[0];
+  direct_pos_y = xyz->pos[1];
+  direct_pos_z = xyz->pos[2];
+  direct_upd_cnt++;
   for (int i=0; i<3; i++) {
     float h[KC_STATE_DIM] = {0};
     arm_matrix_instance_f32 H = {1, KC_STATE_DIM, h};
@@ -326,6 +340,10 @@ void kalmanCoreUpdateWithPose(kalmanCoreData_t* this, poseMeasurement_t *pose)
 {
   // a direct measurement of states x, y, and z, and orientation
   // do a scalar update for each state, since this should be faster than updating all together
+  direct_pos_x = pose->pos[0];
+  direct_pos_y = pose->pos[1];
+  direct_pos_z = pose->pos[2];
+  direct_upd_cnt++;
   for (int i=0; i<3; i++) {
     float h[KC_STATE_DIM] = {0};
     arm_matrix_instance_f32 H = {1, KC_STATE_DIM, h};
@@ -441,10 +459,14 @@ void kalmanCoreUpdateWithTDOA(kalmanCoreData_t* this, tdoaMeasurement_t *tdoa)
         .y = this->S[KC_STATE_Y],
         .z = this->S[KC_STATE_Z],
       };
-
+      tdoa_x = this->S[KC_STATE_X];
+      tdoa_y = this->S[KC_STATE_Y];
+      tdoa_z = this->S[KC_STATE_Z];
+      tdoa_err = error;
       bool sampleIsGood = outlierFilterValidateTdoaSteps(tdoa, error, &jacobian, &estimatedPosition);
       if (sampleIsGood) {
         scalarUpdate(this, &H, error, tdoa->stdDev);
+        tdoa_upd_cnt++;
       }
     }
   }
@@ -1126,3 +1148,18 @@ PARAM_GROUP_START(kalman)
   PARAM_ADD(PARAM_FLOAT, initialZ, &initialZ)
   PARAM_ADD(PARAM_FLOAT, initialYaw, &initialYaw)
 PARAM_GROUP_STOP(kalman)
+
+LOG_GROUP_START(tdoa_est)
+  LOG_ADD(LOG_FLOAT, tdoa_x, &tdoa_x)
+  LOG_ADD(LOG_FLOAT, tdoa_y, &tdoa_y)
+  LOG_ADD(LOG_FLOAT, tdoa_z, &tdoa_z)
+  LOG_ADD(LOG_FLOAT, tdoa_err, &tdoa_err)
+  LOG_ADD(LOG_INT32, upd_cnt, &tdoa_upd_cnt)
+LOG_GROUP_STOP(tdoa_est)
+
+LOG_GROUP_START(dir_est)
+  LOG_ADD(LOG_FLOAT, pos_x, &direct_pos_x)
+  LOG_ADD(LOG_FLOAT, pos_y, &direct_pos_y)
+  LOG_ADD(LOG_FLOAT, pos_z, &direct_pos_z)
+  LOG_ADD(LOG_INT32, upd_cnt, &direct_upd_cnt)
+LOG_GROUP_STOP(dir_est)
