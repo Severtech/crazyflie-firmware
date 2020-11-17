@@ -77,7 +77,7 @@
 #else
 #define ROLLPITCH_ZERO_REVERSION (0.001f)
 #endif
-
+#define TDOA_WIN 3
 
 /**
  * Supporting and utility functions
@@ -406,6 +406,11 @@ void kalmanCoreUpdateWithDistance(kalmanCoreData_t* this, distanceMeasurement_t 
 }
 
 
+float tdoa_fx[TDOA_WIN];
+float tdoa_fy[TDOA_WIN];
+float tdoa_fz[TDOA_WIN];
+int tdo_fcnt=0;
+
 void kalmanCoreUpdateWithTDOA(kalmanCoreData_t* this, tdoaMeasurement_t *tdoa)
 {
   if (tdoaCount >= 100)
@@ -443,9 +448,26 @@ void kalmanCoreUpdateWithTDOA(kalmanCoreData_t* this, tdoaMeasurement_t *tdoa)
     arm_matrix_instance_f32 H = {1, KC_STATE_DIM, h};
 
     if ((d0 != 0.0f) && (d1 != 0.0f)) {
-      h[KC_STATE_X] = (dx1 / d1 - dx0 / d0);
-      h[KC_STATE_Y] = (dy1 / d1 - dy0 / d0);
-      h[KC_STATE_Z] = (dz1 / d1 - dz0 / d0);
+      tdoa_fx[tdo_fcnt] = (dx1 / d1 - dx0 / d0);
+      tdoa_fy[tdo_fcnt] = (dy1 / d1 - dy0 / d0);
+      tdoa_fz[tdo_fcnt] = (dz1 / d1 - dz0 / d0);
+      tdo_fcnt++;
+      tdo_fcnt = tdo_fcnt % TDOA_WIN;
+      h[KC_STATE_X] = 0.0;
+      h[KC_STATE_Y] = 0.0;
+      h[KC_STATE_Z] = 0.0;
+      for (int i=0;i<TDOA_WIN;i++)
+      {
+        h[KC_STATE_X] += tdoa_fx[i];
+        h[KC_STATE_Y] += tdoa_fy[i];
+        h[KC_STATE_Z] += tdoa_fz[i];
+      }
+      
+      h[KC_STATE_X] /=TDOA_WIN;
+      h[KC_STATE_Y] /=TDOA_WIN;
+      h[KC_STATE_Z] /=TDOA_WIN;
+
+
 
       vector_t jacobian = {
         .x = h[KC_STATE_X],
@@ -459,7 +481,7 @@ void kalmanCoreUpdateWithTDOA(kalmanCoreData_t* this, tdoaMeasurement_t *tdoa)
         .z = this->S[KC_STATE_Z],
       };
       tdoa_x = this->S[KC_STATE_X];
-      tdoa_y = this->S[KC_STATE_Y];
+      tdoa_y = this->S[KC_STATE_Y]; 
       tdoa_z = this->S[KC_STATE_Z];
       tdoa_err = error;
       bool sampleIsGood = outlierFilterValidateTdoaSteps(tdoa, error, &jacobian, &estimatedPosition);
